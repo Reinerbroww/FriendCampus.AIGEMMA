@@ -11,26 +11,32 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_db(retries=3, delay=1):
-    print("Connecting to database...")
-    """Koneksi ke database dengan auto-retry"""
+    """Koneksi PostgreSQL stabil untuk production"""
     last_error = None
+
     for attempt in range(retries):
         try:
             conn = psycopg2.connect(
                 DATABASE_URL,
                 connect_timeout=10,
+                sslmode="require",
                 keepalives=1,
                 keepalives_idle=30,
                 keepalives_interval=10,
                 keepalives_count=5
             )
-            conn.autocommit = False
+
+            conn.autocommit = True
+
             return conn
+
         except psycopg2.OperationalError as e:
             last_error = e
+            print(f"[DB RETRY {attempt+1}] {e}")
+
             if attempt < retries - 1:
                 time.sleep(delay)
-            continue
+
     raise last_error
 
 
@@ -156,6 +162,19 @@ def fetchone_as_dict(cursor):
     columns = [desc[0] for desc in cursor.description]
     row = cursor.fetchone()
     return dict(zip(columns, row)) if row else None
+
+def safe_close(cursor=None, conn=None):
+    try:
+        if cursor:
+            cursor.close()
+    except:
+        pass
+
+    try:
+        if conn:
+            conn.close()
+    except:
+        pass
 
 
 # ===== USER AUTH =====

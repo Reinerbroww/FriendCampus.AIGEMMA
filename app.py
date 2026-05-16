@@ -22,6 +22,11 @@ from gemma import (
 )
 
 app = Flask(__name__)
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax'
+)
 app.secret_key = os.getenv("SECRET_KEY", "fc2026xK9mPqRvNwLjTsYbDhUeAzCgFi")
 
 with app.app_context():
@@ -44,8 +49,12 @@ def get_current_user():
     return format_user(user)
 
 def get_sidebar_data(user_id):
-    recent = get_recent_subjects(user_id)
-    return [{"id": r["id"], "name": r["name"]} for r in recent]
+    try:
+        recent = get_recent_subjects(user_id)
+        return recent
+    except Exception as e:
+        print("Sidebar Error:", e)
+        return []
 
 def login_required(f):
     from functools import wraps
@@ -112,7 +121,11 @@ def logout():
 @login_required
 def index():
     user = get_current_user()
-    subjects = get_all_subjects(user['id'])
+    try:
+        subjects = get_all_subjects(user['id'])
+    except Exception as e:
+        print("Index subject error:", e)
+        subjects = []
     total_completed = 0
     total_topics    = 0
     total_chats     = 0
@@ -162,12 +175,28 @@ def delete_subject_route(subject_id):
 @app.route("/subject/<int:subject_id>")
 @login_required
 def subject_page(subject_id):
+    user = get_current_user()
+
     subject = get_subject_by_id(subject_id)
+
     if not subject:
         return redirect(url_for("index"))
-    user = get_current_user()
-    log_recent_subject(user['id'], subject_id)
-    conversations = get_conversations(subject_id)
+
+    # SECURITY CHECK
+    if subject["user_id"] != user["id"]:
+        return redirect(url_for("index"))
+
+    try:
+        log_recent_subject(user['id'], subject_id)
+    except Exception as e:
+        print("Recent subject error:", e)
+
+    try:
+        conversations = get_conversations(subject_id)
+    except Exception as e:
+        print("Conversation error:", e)
+        conversations = []
+
     return render_template(
         "subject.html",
         subject=subject,
