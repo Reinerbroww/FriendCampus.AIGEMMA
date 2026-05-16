@@ -74,7 +74,7 @@ def safe_generate(model, contents, use_search=False):
 
     config = types.GenerateContentConfig(
         temperature=0.7,
-        max_output_tokens=700
+        max_output_tokens=350
     )
 
     if use_search:
@@ -366,7 +366,7 @@ def chat_with_image(subject_name, user_message, image_base64, mime_type="image/j
             ],
             config=types.GenerateContentConfig(
                 temperature=0.7,
-                max_output_tokens=700
+                max_output_tokens=350
             )
         )
 
