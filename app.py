@@ -232,7 +232,7 @@ def chat(subject_id):
     if not user_message:
         return jsonify({"error": "Empty message"}), 400
 
-    raw_history = get_conversations(subject_id)
+    raw_history = get_conversations(subject_id) [-6:]
     conversation_history = [
         {
             "role":  "user" if msg["role"] == "user" else "model",
