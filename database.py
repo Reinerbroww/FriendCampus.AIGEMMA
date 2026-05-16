@@ -11,6 +11,7 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_db(retries=3, delay=1):
+    print("Connecting to database...")
     """Koneksi ke database dengan auto-retry"""
     last_error = None
     for attempt in range(retries):
