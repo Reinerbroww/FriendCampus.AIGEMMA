@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Account — FriendCampus.AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='bg.js') }}"></script>
+</head>
+<body class="auth-body">
+
+<div class="auth-page">
+    <div class="auth-box">
+        <div class="auth-logo">Friend<span>Campus</span>.AI</div>
+        <div class="auth-title">Create account</div>
+        <div class="auth-sub">Join FriendCampus.AI and start learning smarter</div>
+
+        {% if error %}
+        <div class="auth-error">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"
+                 stroke="currentColor" stroke-width="1.5"
+                 style="flex-shrink:0;margin-top:1px">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M8 5v3M8 11h.01"/>
+            </svg>
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/register" class="auth-form">
+            <div class="field-group">
+                <label class="field-label">What should we call you?</label>
+                <input
+                    type="text"
+                    name="display_name"
+                    id="displayNameInput"
+                    class="auth-input"
+                    placeholder="e.g. Budi, Andi, Sarah..."
+                    required autofocus
+                >
+                <div class="field-hint" id="nameHint"></div>
+            </div>
+
+            <div class="field-group">
+                <label class="field-label">Username</label>
+                <input
+                    type="text"
+                    name="username"
+                    class="auth-input"
+                    placeholder="Choose a username"
+                    autocomplete="username"
+                    required
+                >
+            </div>
+
+            <div class="field-group">
+                <label class="field-label">Password</label>
+                <div class="input-wrapper">
+                    <input
+                        type="password"
+                        name="password"
+                        id="passwordInput"
+                        class="auth-input"
+                        placeholder="At least 6 characters"
+                        autocomplete="new-password"
+                        required
+                    >
+                    <button type="button" class="toggle-pw" id="toggleBtn">
+                        <svg id="eyeIcon" width="16" height="16" viewBox="0 0 16 16"
+                             fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+                            <circle cx="8" cy="8" r="2"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Password strength -->
+                <div class="strength-row">
+                    <div class="strength-bar">
+                        <div class="strength-seg" id="s1"></div>
+                        <div class="strength-seg" id="s2"></div>
+                        <div class="strength-seg" id="s3"></div>
+                        <div class="strength-seg" id="s4"></div>
+                    </div>
+                    <div class="strength-label" id="strengthLabel">—</div>
+                </div>
+            </div>
+
+            <button type="submit" class="auth-btn">Create Account</button>
+        </form>
+
+        <div class="auth-footer">
+            Already have an account?
+            <a href="/login" class="auth-link">Sign in</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ===== TOGGLE PASSWORD =====
+    document.getElementById('toggleBtn').addEventListener('click', function() {
+        const input = document.getElementById('passwordInput');
+        const icon  = document.getElementById('eyeIcon');
+        if (input.type === 'password') {
+            input.type = 'text';
+            this.style.opacity = '1';
+            icon.innerHTML = `
+                <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+                <circle cx="8" cy="8" r="2"/>
+                <line x1="2" y1="2" x2="14" y2="14"/>`;
+        } else {
+            input.type = 'password';
+            this.style.opacity = '0.4';
+            icon.innerHTML = `
+                <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+                <circle cx="8" cy="8" r="2"/>`;
+        }
+    });
+
+    // ===== PASSWORD STRENGTH =====
+    document.getElementById('passwordInput').addEventListener('input', function() {
+        const val  = this.value;
+        const segs = [
+            document.getElementById('s1'),
+            document.getElementById('s2'),
+            document.getElementById('s3'),
+            document.getElementById('s4'),
+        ];
+        const label = document.getElementById('strengthLabel');
+
+        let score = 0;
+        if (val.length >= 6)                          score++;
+        if (val.length >= 10)                         score++;
+        if (/[A-Z]/.test(val) || /[0-9]/.test(val)) score++;
+        if (/[^A-Za-z0-9]/.test(val))                score++;
+
+        const colors  = ['#3a1a1a', '#3a2a0a', '#1a2a1a', '#2a2a2a'];
+        const labels  = ['Weak',    'Fair',    'Good',    'Strong'];
+        const lblClrs = ['#cc4444', '#aa7700', '#44aa44', '#888888'];
+
+        segs.forEach((s, i) => {
+            s.style.background    = i < score ? colors[score - 1] : '#141414';
+            s.style.boxShadow     = i < score ? `0 0 4px ${colors[score - 1]}` : 'none';
+            s.style.transition    = 'background 0.3s, box-shadow 0.3s';
+        });
+
+        label.textContent = score > 0 ? labels[score - 1] : '—';
+        label.style.color = score > 0 ? lblClrs[score - 1] : '#2a2a2a';
+    });
+
+    // ===== DISPLAY NAME GREETING =====
+    document.getElementById('displayNameInput').addEventListener('input', function() {
+        const hint = document.getElementById('nameHint');
+        const name = this.value.trim();
+        if (name.length > 0) {
+            hint.textContent = `👋 Hello, ${name}! Nice to meet you.`;
+            hint.style.color = '#555';
+        } else {
+            hint.textContent = 'This is how FriendCampus.AI will greet you';
+            hint.style.color = '#2a2a2a';
+        }
+    });
+</script>
+</body>
+</html>

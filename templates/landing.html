@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FriendCampus.AI — Your AI Study Companion</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='bg.js') }}"></script>
+</head>
+<body class="landing-body">
+
+<div class="landing-page">
+
+    <!-- Navbar -->
+    <nav class="landing-nav">
+        <div class="landing-logo">Friend<span>Campus</span>.AI</div>
+        <div class="landing-nav-actions">
+            <a href="/login" class="landing-nav-link">Sign In</a>
+            <a href="/register" class="landing-nav-btn">Get Started</a>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <div class="landing-hero">
+        <div class="landing-badge">
+            <div class="landing-badge-dot"></div>
+            Powered by Gemma 4
+        </div>
+
+        <h1 class="landing-title">
+            Your AI Study<br>
+            <span class="landing-title-dim">Companion</span>
+        </h1>
+
+        <p class="landing-sub">
+            Learn smarter with personalized roadmaps, AI-powered Q&A,
+            understanding checks, and academic references — all in one place.
+        </p>
+
+        <div class="landing-actions">
+            <a href="/register" class="landing-btn-primary">
+                Start Learning
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M3 8h10M9 4l4 4-4 4"/>
+                </svg>
+            </a>
+            <a href="/login" class="landing-btn-secondary">Sign In</a>
+        </div>
+    </div>
+
+    <!-- Feature cards -->
+    <div class="landing-features">
+        <div class="landing-feat">
+            <div class="landing-feat-icon">💬</div>
+            <div class="landing-feat-title">Ask Anything</div>
+            <div class="landing-feat-sub">Chat with Gemma about any subject, anytime</div>
+        </div>
+        <div class="landing-feat">
+            <div class="landing-feat-icon">🗺️</div>
+            <div class="landing-feat-title">Smart Roadmap</div>
+            <div class="landing-feat-sub">AI-generated learning path for every subject</div>
+        </div>
+        <div class="landing-feat">
+            <div class="landing-feat-icon">🧠</div>
+            <div class="landing-feat-title">Check Understanding</div>
+            <div class="landing-feat-sub">Test yourself with personalized questions</div>
+        </div>
+        <div class="landing-feat">
+            <div class="landing-feat-icon">📊</div>
+            <div class="landing-feat-title">Weakness Report</div>
+            <div class="landing-feat-sub">Know exactly what needs more attention</div>
+        </div>
+        <div class="landing-feat">
+            <div class="landing-feat-icon">📄</div>
+            <div class="landing-feat-title">References</div>
+            <div class="landing-feat-sub">Find papers and articles with web search</div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="landing-footer">
+        Built with Gemma 4 · FriendCampus.AI © 2026
+    </div>
+
+</div>
+</body>
+</html>

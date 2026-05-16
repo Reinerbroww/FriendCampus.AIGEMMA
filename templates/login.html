@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign In — FriendCampus.AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='bg.js') }}"></script>
+</head>
+<body class="auth-body">
+
+<div class="auth-page">
+    <div class="auth-box">
+        <div class="auth-logo">Friend<span>Campus</span>.AI</div>
+        <div class="auth-title">Welcome back</div>
+        <div class="auth-sub">Sign in to continue learning</div>
+
+        {% if error %}
+        <div class="auth-error">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"
+                 stroke="currentColor" stroke-width="1.5"
+                 style="flex-shrink:0;margin-top:1px">
+                <circle cx="8" cy="8" r="6"/>
+                <path d="M8 5v3M8 11h.01"/>
+            </svg>
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/login" class="auth-form">
+            <div class="field-group">
+                <label class="field-label">Username</label>
+                <input
+                    type="text"
+                    name="username"
+                    class="auth-input"
+                    placeholder="Enter your username"
+                    autocomplete="username"
+                    required autofocus
+                >
+            </div>
+
+            <div class="field-group">
+                <label class="field-label">Password</label>
+                <div class="input-wrapper">
+                    <input
+                        type="password"
+                        name="password"
+                        id="passwordInput"
+                        class="auth-input"
+                        placeholder="Enter your password"
+                        autocomplete="current-password"
+                        required
+                    >
+                    <button type="button" class="toggle-pw" id="toggleBtn">
+                        <svg id="eyeIcon" width="16" height="16" viewBox="0 0 16 16"
+                             fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+                            <circle cx="8" cy="8" r="2"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="auth-btn">Sign In</button>
+        </form>
+
+        <div class="auth-footer">
+            Don't have an account?
+            <a href="/register" class="auth-link">Create one</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Toggle password visibility
+    document.getElementById('toggleBtn').addEventListener('click', function() {
+        const input = document.getElementById('passwordInput');
+        const icon  = document.getElementById('eyeIcon');
+        if (input.type === 'password') {
+            input.type = 'text';
+            this.style.opacity = '1';
+            icon.innerHTML = `
+                <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+                <circle cx="8" cy="8" r="2"/>
+                <line x1="2" y1="2" x2="14" y2="14"/>`;
+        } else {
+            input.type = 'password';
+            this.style.opacity = '0.4';
+            icon.innerHTML = `
+                <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z"/>
+                <circle cx="8" cy="8" r="2"/>`;
+        }
+    });
+</script>
+</body>
+</html>

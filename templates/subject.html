@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>{{ subject['name'] }} - FriendCampus.AI</title>
+        <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+        <script src="{{ url_for('static', filename='bg.js') }}"></script>
+    </head>
+    <body>
+
+    <div class="app-layout">
+        {% set active = 'subject' %}
+        {% set current_subject = subject['name'] %}
+        {% set current_subject_id = subject['id'] %}
+        {% include '_sidebar.html' %}
+
+        <main class="main-content">
+            <a href="/" class="back-btn">
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" width="14" height="14">
+                    <path d="M10 3L5 8l5 5"/>
+                </svg>
+                Dashboard
+            </a>
+
+            <div class="topbar">
+                <div>
+                    <div class="page-title">{{ subject['name'] }}</div>
+                    <div class="page-sub">Choose the feature you want to use</div>
+                </div>
+            </div>
+
+            <div class="tabs">
+                <button class="tab-btn active" onclick="showTab('chat', this)">💬 Ask Anything</button>
+                <button class="tab-btn" onclick="showTab('check', this)">🧠 Check Understanding</button>
+                <button class="tab-btn" onclick="showTab('roadmap', this)">🗺️ Roadmap</button>
+                <button class="tab-btn" onclick="showTab('weakness', this)">📊 Weakness</button>
+                <button class="tab-btn" onclick="showTab('references', this)">📄 References</button>
+            </div>
+
+            <!-- Tab: Q&A -->
+            <div id="tab-chat" class="tab-content active">
+                <div class="chat-box" id="chatBox">
+                    {% if conversations %}
+                        {% for msg in conversations %}
+                        <div class="message {{ msg['role'] }}">
+                            <div class="bubble">{{ msg['message'] }}</div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="empty-chat">
+                            <div class="empty-icon">💬</div>
+                            <p style="color:#555;font-size:14px;">Ask something about <strong style="color:#888;">{{ subject['name'] }}</strong></p>
+                            <p class="empty-hint">Press Enter to send</p>
+                        </div>
+                    {% endif %}
+                </div>
+
+                <div class="loading" id="loading" style="display:none;">
+                    <div class="loading-dots"><span></span><span></span><span></span></div>
+                    FriendCampus.AI is thinking...
+                </div>
+
+                                <!-- Image preview -->
+                <div id="imagePreview" style="display:none;" class="image-preview-box">
+                    <img id="previewImg" src="" alt="Preview">
+                    <button onclick="removeImage()" class="remove-image-btn">✕ Remove</button>
+                </div>
+
+                <div class="chat-input-area">
+                    <label for="imageUpload" class="image-upload-btn" title="Upload image">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"
+                             stroke="currentColor" stroke-width="1.5">
+                            <rect x="1" y="3" width="14" height="10" rx="2"/>
+                            <circle cx="5.5" cy="7.5" r="1.5"/>
+                            <path d="M1 11l4-4 3 3 2-2 5 5"/>
+                        </svg>
+                        <input
+                            type="file"
+                            id="imageUpload"
+                            accept="image/jpeg,image/png,image/webp"
+                            style="display:none;"
+                            onchange="previewImage(this)"
+                        >
+                    </label>
+                    <textarea
+                        id="userInput"
+                        placeholder="Ask something about {{ subject['name'] }}... or upload an image!"
+                        rows="2"
+                    ></textarea>
+                    <button onclick="sendMessage()" id="sendBtn">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
+                             stroke-width="1.5" width="16" height="16">
+                            <path d="M14 2L2 7l5 3 2 5 5-13z"/>
+                        </svg>
+                    </button>
+                </div>
+                <button onclick="clearChat()" class="clear-btn">🗑️ Clear chat history</button>
+            </div>
+
+            <!-- Tab: Cek Pemahaman --><div id="tab-check" class="tab-content">
+
+                <!-- State 1: Pilih Topik -->
+                <div id="checkIntro">
+                    <div class="check-header-row">
+                        <div>
+                            <div class="roadmap-title">Check Understanding</div>
+                            <div class="roadmap-sub">Pick a topic to test yourself on</div>
+                        </div>
+                    </div>
+
+                    <!-- Loading topics -->
+                    <div id="checkTopicsLoading" class="roadmap-loading">
+                        <div class="loading-dots"><span></span><span></span><span></span></div>
+                        Loading topics...
+                    </div>
+
+                    <!-- Topic list -->
+                    <div id="checkTopicsList" class="check-topics-list" style="display:none;"></div>
+
+                    <!-- Empty — belum ada roadmap -->
+                    <div id="checkNoTopics" style="display:none;">
+                        <div class="check-intro-box">
+                            <div class="empty-icon" style="opacity:.4;">🗺️</div>
+                            <div class="check-intro-title">No Topics Yet</div>
+                            <div class="check-intro-desc">
+                                Generate your roadmap first on the Roadmap tab,
+                                then come back here to test your understanding.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- State 2: Pertanyaan -->
+                <div id="checkQuestion" style="display:none;">
+                    <div class="check-panel">
+                        <div class="check-topic-tag" id="checkTopicTag"></div>
+                        <div class="check-header">
+                            <div class="check-title">Question from Gemma</div>
+                            <div class="check-sub">Answer in your own words — no Googling!</div>
+                        </div>
+                        <div class="check-question-text" id="checkQuestionText">
+                            Loading question...
+                        </div>
+                        <textarea
+                            id="checkAnswer"
+                            class="check-answer-input"
+                            placeholder="Write your answer here..."
+                            rows="5"
+                        ></textarea>
+                        <div class="check-actions">
+                            <button onclick="cancelCheck()" class="modal-cancel">
+                                ← Back
+                            </button>
+                            <button onclick="submitAnswer()" class="modal-submit" id="submitAnswerBtn">
+                                Submit Answer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- State 3: Hasil -->
+                <div id="checkResult" style="display:none;">
+                    <div class="result-panel" id="resultPanel">
+                        <div class="result-topic-tag" id="resultTopicTag"></div>
+                        <div class="result-score-row">
+                            <div class="result-score" id="resultScore">0</div>
+                            <div class="result-score-label">/ 100</div>
+                        </div>
+                        <div class="result-feedback" id="resultFeedback"></div>
+                        <div class="result-actions">
+                            <button onclick="cancelCheck()" class="modal-cancel" style="flex:1;">
+                                Try Another Topic
+                            </button>
+                            <button onclick="tryAgain()" class="modal-submit" style="flex:1;">
+                                🔄 Retry This Topic
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+
+            <!-- Tab: Roadmap -->
+            <div id="tab-roadmap" class="tab-content">
+                <div class="roadmap-header">
+                    <div>
+                        <div class="roadmap-title">Learning Roadmap</div>
+                        <div class="roadmap-sub" id="roadmapProgress">Loading topics...</div>
+                    </div>
+                    <button class="reset-btn" onclick="resetRoadmap()">🔄 Regenerate</button>
+                </div>
+
+                <!-- Overall progress -->
+                <div class="roadmap-overall-bar">
+                    <div class="roadmap-overall-fill" id="roadmapOverallFill" style="width:0%"></div>
+                </div>
+
+                <!-- Topics list -->
+                <div class="topics-list" id="topicsList">
+                    <div class="roadmap-loading">
+                        <div class="loading-dots"><span></span><span></span><span></span></div>
+                        Gemma is building your roadmap...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: Weakness -->
+            <div id="tab-weakness" class="tab-content">
+                <div class="roadmap-header">
+                    <div>
+                        <div class="roadmap-title">Weakness Report</div>
+                        <div class="roadmap-sub">Topics you need to strengthen</div>
+                    </div>
+                </div>
+                <div id="weaknessList">
+                    <div class="roadmap-loading">
+                        <div class="loading-dots"><span></span><span></span><span></span></div>
+                        Loading report...
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tab: References -->
+            <div id="tab-references" class="tab-content">
+
+                <div class="ref-ai-badge">
+                    <div class="ref-ai-dot"></div>
+                    Powered by Gemma 4 + Web Search
+                </div>
+
+                <!-- Search Bar -->
+                <div class="ref-search-row">
+                    <input
+                        type="text"
+                        id="refSearchInput"
+                        class="ref-search-input"
+                        placeholder="Search papers, books, articles about {{ subject['name'] }}..."
+                    >
+                    <button onclick="searchReferences()" class="ref-search-btn" id="refSearchBtn">
+                        Search
+                    </button>
+                </div>
+
+                <!-- Filter chips -->
+                <div class="ref-filter-row" id="refFilters" style="display:none;">
+                    <button class="ref-chip active" onclick="filterRefs('all', this)">All</button>
+                    <button class="ref-chip" onclick="filterRefs('paper', this)">📄 Papers</button>
+                    <button class="ref-chip" onclick="filterRefs('book', this)">📚 Books</button>
+                    <button class="ref-chip" onclick="filterRefs('article', this)">📰 Articles</button>
+                    <button class="ref-chip" onclick="filterRefs('website', this)">🔗 Websites</button>
+                    <button class="ref-chip" onclick="filterRefs('course', this)">🎓 Courses</button>
+                </div>
+
+                <!-- Tabs: Search Results vs Saved -->
+                <div class="ref-subtabs" id="refSubtabs" style="display:none;">
+                    <button class="ref-subtab active" onclick="showRefTab('results', this)">
+                        Search Results <span id="resultsCount" class="ref-count">0</span>
+                    </button>
+                    <button class="ref-subtab" onclick="showRefTab('saved', this)">
+                        Saved <span id="savedCount" class="ref-count">0</span>
+                    </button>
+                </div>
+
+                <!-- Loading -->
+                <div id="refLoading" style="display:none;" class="roadmap-loading">
+                    <div class="loading-dots"><span></span><span></span><span></span></div>
+                    Gemma is searching the web for references...
+                </div>
+
+                <!-- Results -->
+                <div id="refResults" class="ref-list"></div>
+
+                <!-- Saved -->
+                <div id="refSaved" class="ref-list" style="display:none;"></div>
+
+                <!-- Empty state awal -->
+                <div id="refEmpty" class="ref-empty">
+                    <div class="empty-icon" style="opacity:.3;">📄</div>
+                    <div class="ref-empty-title">Find Academic References</div>
+                    <div class="ref-empty-sub">
+                        Search for papers, books, and articles related to
+                        <strong>{{ subject['name'] }}</strong>
+                    </div>
+                    <button onclick="searchReferences(true)" class="start-check-btn" style="margin-top:1.25rem;">
+                        🔍 Search for "{{ subject['name'] }}"
+                    </button>
+                </div>
+
+            </div>
+
+        </main>
+    </div>
+
+    <script>const SUBJECT_ID = {{ subject['id'] }};</script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    </body>
+    </html>

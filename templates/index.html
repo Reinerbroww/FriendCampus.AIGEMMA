@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FriendCampus.AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='bg.js') }}"></script>
+</head>
+<body>
+
+<div class="app-layout">
+    {% set active = 'dashboard' %}
+    {% include '_sidebar.html' %}
+
+    <main class="main-content">
+        <div class="topbar">
+            <div class="page-title">Dashboard</div>
+            <div class="page-sub">Welcome back, {{ user['display_name'] }} 👋</div>
+            <button class="add-btn" onclick="toggleModal()">+ Add Subject</button>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-label">Subjects</div>
+                <div class="stat-value">{{ subjects | length }}</div>
+                <div class="stat-sub">this semester</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Topic done</div>
+                <div class="stat-value">{{ total_completed }}</div>
+                <div class="stat-sub">out of {{ total_topics }} total</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Question Asked</div>
+                <div class="stat-value">{{ total_chats }}</div>
+                <div class="stat-sub">all time</div>
+            </div>
+        </div>
+
+        <div class="section-label">Your subjects</div>
+        <div class="subjects-grid">
+            {% for subject in subjects %}
+            <a href="/subject/{{ subject['id'] }}" class="subject-card">
+                <div class="subject-icon">
+                    {{ loop.cycle('📐', '💻', '🗄️', '📚', '🔬', '📊') }}
+                </div>
+                <div class="subject-name">{{ subject['name'] }}</div>
+                <div class="subject-progress-label">
+                    {{ subject['completed'] }} from {{ subject['total'] }} topic
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ subject['percent'] }}%"></div>
+                </div>
+                <div class="badge">
+                    {% if subject['percent'] == 0 %}
+                        Not started
+                    {% else %}
+                        {{ subject['percent'] }}% done
+                    {% endif %}
+                </div>
+                <form action="/delete-subject/{{ subject['id'] }}" method="POST"
+                      onclick="event.stopPropagation()">
+                    <button type="submit" class="delete-btn">Delete</button>
+                </form>
+            </a>
+            {% endfor %}
+
+            <div class="add-card" onclick="toggleModal()">
+                <div class="add-card-icon">+</div>
+                <div class="add-card-text">Add new subject</div>
+            </div>
+        </div>
+
+        {% if recent_activity %}
+        <div class="divider"></div>
+        <div class="section-label">last activity</div>
+        <div class="activity-box">
+            {% for act in recent_activity %}
+            <div class="activity-row">
+                <div class="act-dot"></div>
+                <div class="act-text">{{ act['message'] }}</div>
+                <div class="act-time">{{ act['created_at'] }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </main>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="toggleModal()">
+    <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-title">Add Subject</div>
+        <form action="/add-subject" method="POST">
+            <input
+                type="text"
+                name="name"
+                placeholder="e.g. Calculus, Data Structures..."
+                class="modal-input"
+                required
+                autofocus
+            >
+            <div class="modal-actions">
+                <button type="button" class="modal-cancel" onclick="toggleModal()">Cancel</button>
+                <button type="submit" class="modal-submit">Add</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

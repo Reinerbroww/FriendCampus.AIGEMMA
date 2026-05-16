@@ -1,0 +1,12 @@
+.env
+*.db
+friendcampus.db
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/# created by virtualenv automatically
