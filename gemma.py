@@ -1,6 +1,7 @@
 import os
 import re
 import json
+import random
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
@@ -32,37 +33,80 @@ FORMATTING RULES — follow strictly:
 - Respond in the same language the student uses (Indonesian or English)"""
 
 
+# =========================================================
+# HELPERS
+# =========================================================
+
 def clean_markdown(text):
-    """Hapus simbol markdown dari response Gemma"""
+    """Remove markdown symbols from Gemma responses"""
     if not text:
         return ""
-    # Hapus bold/italic
+
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-    text = re.sub(r'\*(.+?)\*',     r'\1', text)
-    text = re.sub(r'__(.+?)__',     r'\1', text)
-    text = re.sub(r'_(.+?)_',       r'\1', text)
-    # Hapus heading
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    text = re.sub(r'_(.+?)_', r'\1', text)
+
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    # Hapus code block tapi keep isinya
+
     text = re.sub(r'```[\w]*\n?(.*?)```', r'\1', text, flags=re.DOTALL)
     text = re.sub(r'`(.+?)`', r'\1', text)
-    # Hapus horizontal rule
+
     text = re.sub(r'^[-*]{3,}$', '', text, flags=re.MULTILINE)
-    # Rapiin whitespace berlebih
+
     text = re.sub(r'\n{3,}', '\n\n', text)
+
     return text.strip()
 
 
 def make_content(role, text):
-    """Helper bikin Content object"""
     return types.Content(
         role=role,
         parts=[types.Part(text=text)]
     )
 
 
+def safe_generate(model, contents, use_search=False):
+    """
+    Stable wrapper for generate_content
+    Better for deployment hosting environments
+    """
+
+    config = types.GenerateContentConfig(
+        temperature=0.7,
+        max_output_tokens=700
+    )
+
+    if use_search:
+        config.tools = [types.Tool(google_search=types.GoogleSearch())]
+
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=config
+        )
+
+        if not response:
+            return None
+
+        if not getattr(response, "text", None):
+            return None
+
+        return response.text.strip()
+
+    except Exception as e:
+        print("GEMMA ERROR:", str(e))
+        return None
+
+
+# =========================================================
+# CHAT
+# =========================================================
+
 def chat_with_gemma(subject_name, conversation_history, user_message):
-    """Chat dengan Gemma dengan history percakapan"""
+    """Chat with Gemma using conversation history"""
+
     contents = []
 
     if not conversation_history:
@@ -71,25 +115,43 @@ def chat_with_gemma(subject_name, conversation_history, user_message):
             f"Subject being studied: {subject_name}\n\n"
             f"Student: {user_message}"
         )
+
         contents = [make_content("user", first)]
+
     else:
-        for msg in conversation_history:
+        # Limit history to reduce server load
+        for msg in conversation_history[-6:]:
             role = "user" if msg.get("role") == "user" else "model"
-            contents.append(make_content(role, msg.get("parts", "")))
-        contents.append(make_content("user", user_message))
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_FAST,
-            contents=contents
+            contents.append(
+                make_content(role, msg.get("parts", ""))
+            )
+
+        contents.append(
+            make_content("user", user_message)
         )
-        return clean_markdown(response.text)
-    except Exception as e:
-        raise Exception(f"Chat failed: {str(e)}")
 
+    result = safe_generate(
+        MODEL_FAST,
+        contents
+    )
+
+    if not result:
+        return (
+            "The AI is currently busy or the server connection is slow. "
+            "Please try sending your message again."
+        )
+
+    return clean_markdown(result)
+
+
+# =========================================================
+# ROADMAP
+# =========================================================
 
 def generate_roadmap(subject_name):
-    """Generate roadmap hierarki dengan sub-topik dalam format JSON"""
+    """Generate hierarchical roadmap with subtopics"""
+
     prompt = (
         f'Create a detailed learning roadmap for the university course "{subject_name}".\n\n'
         f'Generate exactly 8-10 main topics, each with exactly 3-4 subtopics.\n\n'
@@ -110,66 +172,79 @@ def generate_roadmap(subject_name):
         f'Make subtopics specific and actionable.'
     )
 
+    result = safe_generate(
+        MODEL_FAST,
+        [make_content("user", prompt)]
+    )
+
+    if not result:
+        return []
+
+    raw = re.sub(r'```json|```', '', result).strip()
+
+    json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+
+    if json_match:
+        raw = json_match.group()
+
     try:
-        response = client.models.generate_content(
-            model=MODEL_FAST,
-            contents=[make_content("user", prompt)]
-        )
+        data = json.loads(raw)
 
-        raw = response.text.strip()
+        topics = data.get("topics", [])
 
-        # Bersihin markdown kalau ada
-        raw = re.sub(r'```json|```', '', raw).strip()
+        if topics and isinstance(topics[0], dict):
+            return topics
 
-        # Cari JSON object di response
-        json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-        if json_match:
-            raw = json_match.group()
+    except Exception:
+        pass
 
-        try:
-            data   = json.loads(raw)
-            topics = data.get("topics", [])
-            if topics and isinstance(topics[0], dict):
-                return topics
-        except json.JSONDecodeError:
-            pass
+    # Manual fallback parser
+    lines = result.split("\n")
 
-        # Fallback — parse sebagai numbered list
-        lines      = response.text.strip().split('\n')
-        topics     = []
-        current    = None
+    topics = []
+    current = None
 
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-            # Cek apakah ini main topic (angka di depan)
-            main_match = re.match(r'^\d+[\.\)]\s*(.+)$', line)
-            sub_match  = re.match(r'^[-•*]\s*(.+)$|^[a-z][\.\)]\s*(.+)$', line)
+    for line in lines:
+        line = line.strip()
 
-            if main_match:
-                if current:
-                    topics.append(current)
-                current = {
-                    "title":     main_match.group(1).strip(),
-                    "subtopics": []
-                }
-            elif sub_match and current:
-                sub_text = (sub_match.group(1) or sub_match.group(2) or "").strip()
-                if sub_text:
-                    current["subtopics"].append(sub_text)
+        if not line:
+            continue
 
-        if current:
-            topics.append(current)
+        main_match = re.match(r'^\d+[\.\)]\s*(.+)$', line)
+        sub_match = re.match(r'^[-•*]\s*(.+)$|^[a-z][\.\)]\s*(.+)$', line)
 
-        return topics if topics else []
+        if main_match:
+            if current:
+                topics.append(current)
 
-    except Exception as e:
-        raise Exception(f"Roadmap generation failed: {str(e)}")
+            current = {
+                "title": main_match.group(1).strip(),
+                "subtopics": []
+            }
 
+        elif sub_match and current:
+            sub_text = (
+                sub_match.group(1)
+                or sub_match.group(2)
+                or ""
+            ).strip()
+
+            if sub_text:
+                current["subtopics"].append(sub_text)
+
+    if current:
+        topics.append(current)
+
+    return topics
+
+
+# =========================================================
+# UNDERSTANDING CHECK
+# =========================================================
 
 def generate_understanding_check(subject_name, topic_name, conversation_history=None):
-    """Generate satu pertanyaan open-ended untuk cek pemahaman topik spesifik"""
+    """Generate one open-ended understanding question"""
+
     prompt = (
         f'You are a study assistant for the subject "{subject_name}".\n\n'
         f'Create ONE open-ended question to test a student\'s understanding of: "{topic_name}"\n\n'
@@ -182,34 +257,39 @@ def generate_understanding_check(subject_name, topic_name, conversation_history=
         f'Write ONLY the question itself. No introduction, no explanation, no numbering.'
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_FAST,
-            contents=[make_content("user", prompt)]
-        )
-        result = clean_markdown(response.text.strip())
+    result = safe_generate(
+        MODEL_FAST,
+        [make_content("user", prompt)]
+    )
 
-        # Validasi hasil
-        if not result or len(result) < 10:
-            raise ValueError("Question too short or empty")
-
-        # Hapus prefix yang tidak perlu
-        result = re.sub(r'^(Question:|Q:|Here\'s a question:|Sure,?|Of course,?)\s*', '', result, flags=re.IGNORECASE)
-        return result.strip()
-
-    except Exception as e:
-        # Fallback pertanyaan yang masih relevan
+    if not result:
         fallbacks = [
             f"Explain the concept of '{topic_name}' in your own words and provide a real-world example of how it is applied.",
             f"Describe the key principles of '{topic_name}' and explain why it is important in the context of {subject_name}.",
             f"How would you explain '{topic_name}' to someone who has never studied {subject_name} before? What are the most important points to cover?"
         ]
-        import random
+
         return random.choice(fallbacks)
 
+    result = clean_markdown(result)
+
+    result = re.sub(
+        r'^(Question:|Q:|Here\'s a question:|Sure,?|Of course,?)\s*',
+        '',
+        result,
+        flags=re.IGNORECASE
+    )
+
+    return result.strip()
+
+
+# =========================================================
+# ANSWER EVALUATION
+# =========================================================
 
 def evaluate_answer(subject_name, question, user_answer):
-    """Evaluasi jawaban user dan kasih skor + feedback"""
+    """Evaluate student answer"""
+
     prompt = (
         f'You are evaluating a student answer for the subject "{subject_name}".\n\n'
         f'Question asked: {question}\n\n'
@@ -232,18 +312,28 @@ def evaluate_answer(subject_name, question, user_answer):
         f'- Do not add any extra text outside the format above'
     )
 
-    try:
-        response = client.models.generate_content(
-            model=MODEL_STRONG,
-            contents=[make_content("user", prompt)]
-        )
-        return response.text.strip()
-    except Exception as e:
-        raise Exception(f"Evaluation failed: {str(e)}")
+    result = safe_generate(
+        MODEL_STRONG,
+        [make_content("user", prompt)]
+    )
 
+    if not result:
+        return (
+            "SKOR: 40\n"
+            "TOPIK: General\n"
+            "FEEDBACK: Your answer was received but the AI evaluator is currently busy. Please try again later."
+        )
+
+    return result
+
+
+# =========================================================
+# IMAGE ANALYSIS
+# =========================================================
 
 def chat_with_image(subject_name, user_message, image_base64, mime_type="image/jpeg"):
-    """Analisis gambar + jawab pertanyaan user"""
+    """Analyze image and answer user question"""
+
     prompt = (
         f'You are FriendCampus.AI, a study assistant for the subject "{subject_name}".\n\n'
         f'The student uploaded an image and asks: "{user_message}"\n\n'
@@ -273,47 +363,42 @@ def chat_with_image(subject_name, user_message, image_base64, mime_type="image/j
                         types.Part(text=prompt)
                     ]
                 )
-            ]
+            ],
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=700
+            )
         )
+
+        if not response or not response.text:
+            return (
+                "The AI failed to analyze the image. "
+                "Please try uploading a smaller image."
+            )
+
         return clean_markdown(response.text)
 
     except Exception as e:
-        error_str = str(e).lower()
+        print("IMAGE ERROR:", str(e))
 
-        # Kalau model gak support vision
-        if any(kw in error_str for kw in ["image", "vision", "multimodal", "unsupported"]):
-            # Coba fallback text-only
-            try:
-                fallback_prompt = (
-                    f'A student studying "{subject_name}" uploaded an image and asks: "{user_message}"\n\n'
-                    f'Since I cannot see the image, please provide a helpful explanation about '
-                    f'this topic based on the question asked.\n\n'
-                    f'Use plain text only, respond in the same language as the question.'
-                )
-                response = client.models.generate_content(
-                    model=MODEL_FAST,
-                    contents=[make_content("user", fallback_prompt)]
-                )
-                return (
-                    "Note: I could not process the image directly, but here's a relevant explanation:\n\n"
-                    + clean_markdown(response.text)
-                )
-            except Exception as e2:
-                return (
-                    "Sorry, I was unable to analyze the image. "
-                    "Please try describing your question in text instead."
-                )
+        return (
+            "The AI could not analyze the image at the moment. "
+            "Please try again later."
+        )
 
-        raise Exception(f"Image analysis failed: {str(e)}")
 
+# =========================================================
+# REFERENCES
+# =========================================================
 
 def find_references(subject_name, query):
-    """Cari referensi akademik menggunakan Gemma + web search"""
+    """Find academic references"""
+
     prompt = (
         f'You are an academic research assistant helping a student studying "{subject_name}".\n\n'
         f'Find 6-7 high quality academic references about: "{query}"\n\n'
-        f'Include a mix of: textbooks, academic papers, educational websites, and online courses. but priority in paper\n\n'
-        f'the references link must be avaliable'
+        f'Include a mix of: textbooks, academic papers, educational websites, and online courses, but prioritize academic papers.\n\n'
+        f'The reference links must be available.\n\n'
         f'Return ONLY a valid JSON object, absolutely no other text:\n'
         f'{{\n'
         f'  "references": [\n'
@@ -330,53 +415,53 @@ def find_references(subject_name, query):
         f'}}'
     )
 
-    # Coba dengan web search dulu
-    try:
-        response = client.models.generate_content(
-            model=MODEL_FAST,
-            contents=[make_content("user", prompt)],
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())]
-            )
-        )
-    except Exception:
-        # Fallback tanpa web search
-        try:
-            response = client.models.generate_content(
-                model=MODEL_FAST,
-                contents=[make_content("user", prompt)]
-            )
-        except Exception as e:
-            raise Exception(f"Reference search failed: {str(e)}")
+    result = safe_generate(
+        MODEL_FAST,
+        [make_content("user", prompt)],
+        use_search=True
+    )
 
-    raw = response.text.strip()
+    if not result:
+        return [{
+            "title": f"Academic resources for {query}",
+            "type": "website",
+            "author": "Google Scholar",
+            "year": "Online",
+            "summary": (
+                f"Search Google Scholar for peer-reviewed papers and academic resources "
+                f"about {query} in the context of {subject_name}."
+            ),
+            "url": f"https://scholar.google.com/scholar?q={query.replace(' ', '+')}+{subject_name.replace(' ', '+')}",
+            "tags": [query, subject_name, "academic"]
+        }]
 
-    # Bersihin markdown
-    raw = re.sub(r'```json|```', '', raw).strip()
+    raw = re.sub(r'```json|```', '', result).strip()
 
-    # Cari JSON object
     json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+
     if json_match:
         raw = json_match.group()
 
     try:
         data = json.loads(raw)
+
         refs = data.get("references", [])
+
         if refs:
             return refs
-    except json.JSONDecodeError:
+
+    except Exception:
         pass
 
-    # Fallback kalau parsing gagal
     return [{
-        "title":   f"Academic resources for {query}",
-        "type":    "website",
-        "author":  "Google Scholar",
-        "year":    "Online",
+        "title": f"Academic resources for {query}",
+        "type": "website",
+        "author": "Google Scholar",
+        "year": "Online",
         "summary": (
             f"Search Google Scholar for peer-reviewed papers and academic resources "
             f"about {query} in the context of {subject_name}."
         ),
-        "url":  f"https://scholar.google.com/scholar?q={query.replace(' ', '+')}+{subject_name.replace(' ', '+')}",
+        "url": f"https://scholar.google.com/scholar?q={query.replace(' ', '+')}+{subject_name.replace(' ', '+')}",
         "tags": [query, subject_name, "academic"]
     }]
