@@ -154,7 +154,7 @@ def generate_roadmap(subject_name):
 
     prompt = (
         f'Create a detailed learning roadmap for the university course "{subject_name}".\n\n'
-        f'Generate exactly 8-10 main topics, each with exactly 3-4 subtopics.\n\n'
+        f'Generate exactly 6 main topics, each with exactly 3 subtopics.\n\n'
         f'Return ONLY valid JSON in this exact format, absolutely no other text before or after:\n'
         f'{{\n'
         f'  "topics": [\n'
@@ -396,7 +396,7 @@ def find_references(subject_name, query):
 
     prompt = (
         f'You are an academic research assistant helping a student studying "{subject_name}".\n\n'
-        f'Find 6-7 high quality academic references about: "{query}"\n\n'
+        f'Find 4 high quality academic references about: "{query}"\n\n'
         f'Include a mix of: textbooks, academic papers, educational websites, and online courses, but prioritize academic papers.\n\n'
         f'The reference links must be available.\n\n'
         f'Return ONLY a valid JSON object, absolutely no other text:\n'
