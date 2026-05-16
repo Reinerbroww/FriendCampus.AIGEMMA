@@ -561,17 +561,31 @@ def log_recent_subject(user_id, subject_id):
 
 
 def get_recent_subjects(user_id, limit=3):
-    conn   = get_db()
+    conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT s.id, s.name
-        FROM recent_subjects r
-        JOIN subjects s ON r.subject_id = s.id
-        WHERE r.user_id = %s
-        ORDER BY r.accessed_at DESC
-        LIMIT %s
-    """, (user_id, limit))
-    results = fetchall_as_dict(cursor)
-    cursor.close()
-    conn.close()
-    return results
+
+    try:
+        limit = int(limit)
+
+        query = f"""
+            SELECT s.id, s.name
+            FROM recent_subjects r
+            JOIN subjects s ON r.subject_id = s.id
+            WHERE r.user_id = %s
+            ORDER BY r.accessed_at DESC
+            LIMIT {limit}
+        """
+
+        cursor.execute(query, (user_id,))
+        results = fetchall_as_dict(cursor)
+
+        return results
+
+    except Exception as e:
+        print("ERROR get_recent_subjects:", e)
+        conn.rollback()
+        return []
+
+    finally:
+        cursor.close()
+        conn.close()
