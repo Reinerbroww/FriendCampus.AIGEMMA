@@ -15,9 +15,11 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-MODEL_FAST   = "models/gemma-4-26b-a4b-it"
+# ===== MODELS =====
+MODEL_FAST = "models/gemma-4-26b-a4b-it"
 MODEL_STRONG = "models/gemma-4-26b-a4b-it"
 
+# ===== SYSTEM PROMPT =====
 SYSTEM_PROMPT = """You are FriendCampus.AI, a smart and friendly AI study companion for university students.
 
 FORMATTING RULES — follow strictly:
@@ -30,15 +32,27 @@ FORMATTING RULES — follow strictly:
 - Keep responses clear, concise, and friendly
 - Always explain step by step for math or code problems
 - Never give just the answer — explain the reasoning
-- Respond in the same language the student uses (Indonesian or English)"""
+- Respond in the same language the student uses (Indonesian or English)
+"""
 
+# ===== GENERATION CONFIG =====
+FAST_CONFIG = types.GenerateContentConfig(
+    temperature=0.7,
+    max_output_tokens=350
+)
 
-# =========================================================
-# HELPERS
-# =========================================================
+ROADMAP_CONFIG = types.GenerateContentConfig(
+    temperature=0.5,
+    max_output_tokens=450
+)
 
+EVAL_CONFIG = types.GenerateContentConfig(
+    temperature=0.3,
+    max_output_tokens=250
+)
+
+# ===== HELPERS =====
 def clean_markdown(text):
-    """Remove markdown symbols from Gemma responses"""
     if not text:
         return ""
 
@@ -66,60 +80,21 @@ def make_content(role, text):
     )
 
 
-def safe_generate(model, contents, use_search=False):
-    """
-    Stable wrapper for generate_content
-    Better for deployment hosting environments
-    """
-
-    config = types.GenerateContentConfig(
-        temperature=0.7,
-        max_output_tokens=350
-    )
-
-    if use_search:
-        config.tools = [types.Tool(google_search=types.GoogleSearch())]
-
-    try:
-        response = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=config
-        )
-
-        if not response:
-            return None
-
-        if not getattr(response, "text", None):
-            return None
-
-        return response.text.strip()
-
-    except Exception as e:
-        print("GEMMA ERROR:", str(e))
-        return None
-
-
-# =========================================================
-# CHAT
-# =========================================================
-
+# ===== CHAT =====
 def chat_with_gemma(subject_name, conversation_history, user_message):
-    """Chat with Gemma using conversation history"""
-
     contents = []
 
     if not conversation_history:
-        first = (
+        first_prompt = (
             f"{SYSTEM_PROMPT}\n\n"
             f"Subject being studied: {subject_name}\n\n"
             f"Student: {user_message}"
         )
 
-        contents = [make_content("user", first)]
+        contents.append(make_content("user", first_prompt))
 
     else:
-        # Limit history to reduce server load
+        # Limit history supaya lebih ringan
         for msg in conversation_history[-6:]:
             role = "user" if msg.get("role") == "user" else "model"
 
@@ -127,224 +102,237 @@ def chat_with_gemma(subject_name, conversation_history, user_message):
                 make_content(role, msg.get("parts", ""))
             )
 
-        contents.append(
-            make_content("user", user_message)
+        contents.append(make_content("user", user_message))
+
+    try:
+        response = client.models.generate_content(
+            model=MODEL_FAST,
+            contents=contents,
+            config=FAST_CONFIG
         )
 
-    result = safe_generate(
-        MODEL_FAST,
-        contents
-    )
+        return clean_markdown(response.text)
 
-    if not result:
+    except Exception as e:
+        print("CHAT ERROR:", e)
+
         return (
-            "The AI is currently busy or the server connection is slow. "
+            "The AI is currently busy or the server connection is unstable. "
             "Please try sending your message again."
         )
 
-    return clean_markdown(result)
 
-
-# =========================================================
-# ROADMAP
-# =========================================================
-
+# ===== ROADMAP =====
 def generate_roadmap(subject_name):
-    """Generate hierarchical roadmap with subtopics"""
-
     prompt = (
-        f'Create a detailed learning roadmap for the university course "{subject_name}".\n\n'
-        f'Generate exactly 6 main topics, each with exactly 3 subtopics.\n\n'
-        f'Return ONLY valid JSON in this exact format, absolutely no other text before or after:\n'
+        f'Create a learning roadmap for the university course "{subject_name}".\n\n'
+
+        f'Rules:\n'
+        f'- Generate exactly 6 main topics\n'
+        f'- Each topic must contain exactly 3 subtopics\n'
+        f'- Order topics from beginner to advanced\n'
+        f'- Keep topic names concise\n'
+        f'- Keep subtopics specific and practical\n\n'
+
+        f'Return ONLY valid JSON in this exact format:\n'
         f'{{\n'
         f'  "topics": [\n'
         f'    {{\n'
-        f'      "title": "Main Topic Name",\n'
+        f'      "title": "Topic Name",\n'
         f'      "subtopics": [\n'
-        f'        "Specific subtopic 1",\n'
-        f'        "Specific subtopic 2",\n'
-        f'        "Specific subtopic 3"\n'
+        f'        "Subtopic 1",\n'
+        f'        "Subtopic 2",\n'
+        f'        "Subtopic 3"\n'
         f'      ]\n'
         f'    }}\n'
         f'  ]\n'
-        f'}}\n\n'
-        f'Order topics from most basic to most advanced.\n'
-        f'Make subtopics specific and actionable.'
+        f'}}'
     )
-
-    result = safe_generate(
-        MODEL_FAST,
-        [make_content("user", prompt)]
-    )
-
-    if not result:
-        return []
-
-    raw = re.sub(r'```json|```', '', result).strip()
-
-    json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-
-    if json_match:
-        raw = json_match.group()
 
     try:
+        response = client.models.generate_content(
+            model=MODEL_FAST,
+            contents=[make_content("user", prompt)],
+            config=ROADMAP_CONFIG
+        )
+
+        raw = response.text.strip()
+
+        raw = re.sub(r'```json|```', '', raw).strip()
+
+        json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+
+        if json_match:
+            raw = json_match.group()
+
         data = json.loads(raw)
 
         topics = data.get("topics", [])
 
-        if topics and isinstance(topics[0], dict):
+        if topics:
             return topics
 
-    except Exception:
-        pass
+        return []
 
-    # Manual fallback parser
-    lines = result.split("\n")
+    except Exception as e:
+        print("ROADMAP ERROR:", e)
 
-    topics = []
-    current = None
-
-    for line in lines:
-        line = line.strip()
-
-        if not line:
-            continue
-
-        main_match = re.match(r'^\d+[\.\)]\s*(.+)$', line)
-        sub_match = re.match(r'^[-•*]\s*(.+)$|^[a-z][\.\)]\s*(.+)$', line)
-
-        if main_match:
-            if current:
-                topics.append(current)
-
-            current = {
-                "title": main_match.group(1).strip(),
-                "subtopics": []
+        # fallback roadmap
+        return [
+            {
+                "title": "Introduction",
+                "subtopics": [
+                    "Basic Concepts",
+                    "Core Principles",
+                    "Simple Applications"
+                ]
+            },
+            {
+                "title": "Fundamentals",
+                "subtopics": [
+                    "Key Terminology",
+                    "Problem Solving",
+                    "Practical Examples"
+                ]
+            },
+            {
+                "title": "Intermediate Concepts",
+                "subtopics": [
+                    "System Design",
+                    "Analysis Methods",
+                    "Case Studies"
+                ]
+            },
+            {
+                "title": "Advanced Topics",
+                "subtopics": [
+                    "Optimization",
+                    "Real-world Usage",
+                    "Advanced Techniques"
+                ]
+            },
+            {
+                "title": "Projects",
+                "subtopics": [
+                    "Mini Project",
+                    "Implementation",
+                    "Testing"
+                ]
+            },
+            {
+                "title": "Final Review",
+                "subtopics": [
+                    "Comprehensive Review",
+                    "Common Mistakes",
+                    "Final Practice"
+                ]
             }
-
-        elif sub_match and current:
-            sub_text = (
-                sub_match.group(1)
-                or sub_match.group(2)
-                or ""
-            ).strip()
-
-            if sub_text:
-                current["subtopics"].append(sub_text)
-
-    if current:
-        topics.append(current)
-
-    return topics
+        ]
 
 
-# =========================================================
-# UNDERSTANDING CHECK
-# =========================================================
-
+# ===== UNDERSTANDING CHECK =====
 def generate_understanding_check(subject_name, topic_name, conversation_history=None):
-    """Generate one open-ended understanding question"""
-
     prompt = (
-        f'You are a study assistant for the subject "{subject_name}".\n\n'
-        f'Create ONE open-ended question to test a student\'s understanding of: "{topic_name}"\n\n'
+        f'You are a study assistant for "{subject_name}".\n\n'
+
+        f'Create ONE university-level open-ended question about:\n'
+        f'"{topic_name}"\n\n'
+
         f'Requirements:\n'
-        f'1. The question must be specifically about "{topic_name}"\n'
-        f'2. Ask the student to explain in their own words\n'
-        f'3. Cannot be answered with just yes or no\n'
-        f'4. Should be at university level difficulty\n'
-        f'5. Do not ask for a definition — ask for explanation or application\n\n'
-        f'Write ONLY the question itself. No introduction, no explanation, no numbering.'
+        f'- The question must test understanding\n'
+        f'- Ask for explanation or application\n'
+        f'- Avoid definition-only questions\n'
+        f'- Cannot be answered with yes/no\n\n'
+
+        f'Write ONLY the question.'
     )
 
-    result = safe_generate(
-        MODEL_FAST,
-        [make_content("user", prompt)]
-    )
+    try:
+        response = client.models.generate_content(
+            model=MODEL_FAST,
+            contents=[make_content("user", prompt)],
+            config=FAST_CONFIG
+        )
 
-    if not result:
+        result = clean_markdown(response.text.strip())
+
+        if not result or len(result) < 10:
+            raise ValueError("Invalid question")
+
+        result = re.sub(
+            r'^(Question:|Q:)\s*',
+            '',
+            result,
+            flags=re.IGNORECASE
+        )
+
+        return result.strip()
+
+    except Exception as e:
+        print("QUESTION ERROR:", e)
+
         fallbacks = [
-            f"Explain the concept of '{topic_name}' in your own words and provide a real-world example of how it is applied.",
-            f"Describe the key principles of '{topic_name}' and explain why it is important in the context of {subject_name}.",
-            f"How would you explain '{topic_name}' to someone who has never studied {subject_name} before? What are the most important points to cover?"
+            f"Explain the concept of '{topic_name}' in your own words and provide a real-world example.",
+            f"Why is '{topic_name}' important in {subject_name}?",
+            f"How would you apply '{topic_name}' in a practical situation?"
         ]
 
         return random.choice(fallbacks)
 
-    result = clean_markdown(result)
 
-    result = re.sub(
-        r'^(Question:|Q:|Here\'s a question:|Sure,?|Of course,?)\s*',
-        '',
-        result,
-        flags=re.IGNORECASE
-    )
-
-    return result.strip()
-
-
-# =========================================================
-# ANSWER EVALUATION
-# =========================================================
-
+# ===== EVALUATION =====
 def evaluate_answer(subject_name, question, user_answer):
-    """Evaluate student answer"""
-
     prompt = (
-        f'You are evaluating a student answer for the subject "{subject_name}".\n\n'
-        f'Question asked: {question}\n\n'
-        f'Student answer: {user_answer}\n\n'
-        f'Evaluate the answer carefully and respond in EXACTLY this format:\n'
-        f'SKOR: [a number from 0 to 100]\n'
-        f'TOPIK: [the topic being tested, 1-4 words]\n'
-        f'FEEDBACK: [2-3 sentences of specific, constructive feedback]\n\n'
-        f'Scoring guide:\n'
-        f'90-100: Answer is complete, accurate, and well-explained\n'
-        f'70-89: Mostly correct with minor gaps or inaccuracies\n'
-        f'50-69: Partially correct, missing key concepts\n'
-        f'30-49: Shows some understanding but significant gaps\n'
-        f'10-29: Mostly incorrect but shows some effort\n'
-        f'5-9: Completely off-topic or irrelevant\n\n'
-        f'CRITICAL RULES:\n'
-        f'- ALWAYS give score above 0 if the student wrote any relevant content\n'
-        f'- Give score above 50 if the answer shows basic understanding\n'
-        f'- Write FEEDBACK in the same language as the student answer\n'
-        f'- Do not add any extra text outside the format above'
+        f'You are evaluating a student answer for "{subject_name}".\n\n'
+
+        f'Question:\n{question}\n\n'
+
+        f'Student Answer:\n{user_answer}\n\n'
+
+        f'Respond ONLY in this format:\n\n'
+
+        f'SKOR: [0-100]\n'
+        f'TOPIK: [topic]\n'
+        f'FEEDBACK: [short constructive feedback]\n\n'
+
+        f'Rules:\n'
+        f'- Give fair scoring\n'
+        f'- Feedback must be constructive\n'
+        f'- Use the same language as the student answer\n'
+        f'- Do not add extra text'
     )
 
-    result = safe_generate(
-        MODEL_STRONG,
-        [make_content("user", prompt)]
-    )
+    try:
+        response = client.models.generate_content(
+            model=MODEL_STRONG,
+            contents=[make_content("user", prompt)],
+            config=EVAL_CONFIG
+        )
 
-    if not result:
+        return response.text.strip()
+
+    except Exception as e:
+        print("EVALUATION ERROR:", e)
+
         return (
             "SKOR: 40\n"
             "TOPIK: General\n"
-            "FEEDBACK: Your answer was received but the AI evaluator is currently busy. Please try again later."
+            "FEEDBACK: Your answer was received, but the evaluation service is currently unstable. Please try again later."
         )
 
-    return result
 
-
-# =========================================================
-# IMAGE ANALYSIS
-# =========================================================
-
+# ===== IMAGE ANALYSIS =====
 def chat_with_image(subject_name, user_message, image_base64, mime_type="image/jpeg"):
-    """Analyze image and answer user question"""
-
     prompt = (
-        f'You are FriendCampus.AI, a study assistant for the subject "{subject_name}".\n\n'
-        f'The student uploaded an image and asks: "{user_message}"\n\n'
-        f'Please analyze the image carefully and provide a helpful, detailed response:\n'
-        f'- If it contains a math problem: solve it completely, step by step\n'
-        f'- If it contains a diagram or chart: explain what it shows and its significance\n'
-        f'- If it contains text or notes: summarize the key concepts clearly\n'
-        f'- If it contains code: explain what the code does and identify any issues\n'
-        f'- For anything else: describe what you see and explain its relevance\n\n'
-        f'Use plain text only, no markdown symbols.\n'
-        f'Respond in the same language the student uses.'
+        f'You are FriendCampus.AI, a study assistant for "{subject_name}".\n\n'
+
+        f'The student uploaded an image and asks:\n'
+        f'"{user_message}"\n\n'
+
+        f'Analyze the image carefully and provide a helpful explanation.\n'
+
+        f'Use plain text only.\n'
+        f'Respond in the same language as the student.'
     )
 
     try:
@@ -364,85 +352,67 @@ def chat_with_image(subject_name, user_message, image_base64, mime_type="image/j
                     ]
                 )
             ],
-            config=types.GenerateContentConfig(
-                temperature=0.7,
-                max_output_tokens=350
-            )
+            config=FAST_CONFIG
         )
-
-        if not response or not response.text:
-            return (
-                "The AI failed to analyze the image. "
-                "Please try uploading a smaller image."
-            )
 
         return clean_markdown(response.text)
 
     except Exception as e:
-        print("IMAGE ERROR:", str(e))
+        print("IMAGE ERROR:", e)
 
         return (
-            "The AI could not analyze the image at the moment. "
-            "Please try again later."
+            "I could not analyze the image right now. "
+            "Please try again or describe the image in text."
         )
 
 
-# =========================================================
-# REFERENCES
-# =========================================================
-
+# ===== REFERENCES =====
 def find_references(subject_name, query):
-    """Find academic references"""
-
     prompt = (
-        f'You are an academic research assistant helping a student studying "{subject_name}".\n\n'
-        f'Find 4 high quality academic references about: "{query}"\n\n'
-        f'Include a mix of: textbooks, academic papers, educational websites, and online courses, but prioritize academic papers.\n\n'
-        f'The reference links must be available.\n\n'
-        f'Return ONLY a valid JSON object, absolutely no other text:\n'
+        f'You are an academic assistant.\n\n'
+
+        f'Find 5 academic references related to:\n'
+        f'"{query}"\n\n'
+
+        f'Prioritize academic papers and educational resources.\n\n'
+
+        f'Return ONLY valid JSON:\n\n'
+
         f'{{\n'
         f'  "references": [\n'
         f'    {{\n'
-        f'      "title": "Full title of the reference",\n'
-        f'      "type": "paper OR book OR article OR website OR course",\n'
-        f'      "author": "Author name or organization",\n'
-        f'      "year": "Publication year or Online",\n'
-        f'      "summary": "2-3 sentences describing what this covers and why it is useful",\n'
-        f'      "url": "Direct URL if available, empty string if not",\n'
-        f'      "tags": ["tag1", "tag2", "tag3"]\n'
+        f'      "title": "Reference Title",\n'
+        f'      "type": "paper",\n'
+        f'      "author": "Author",\n'
+        f'      "year": "2024",\n'
+        f'      "summary": "Short explanation",\n'
+        f'      "url": "https://...",\n'
+        f'      "tags": ["tag1", "tag2"]\n'
         f'    }}\n'
         f'  ]\n'
         f'}}'
     )
 
-    result = safe_generate(
-        MODEL_FAST,
-        [make_content("user", prompt)],
-        use_search=True
-    )
-
-    if not result:
-        return [{
-            "title": f"Academic resources for {query}",
-            "type": "website",
-            "author": "Google Scholar",
-            "year": "Online",
-            "summary": (
-                f"Search Google Scholar for peer-reviewed papers and academic resources "
-                f"about {query} in the context of {subject_name}."
-            ),
-            "url": f"https://scholar.google.com/scholar?q={query.replace(' ', '+')}+{subject_name.replace(' ', '+')}",
-            "tags": [query, subject_name, "academic"]
-        }]
-
-    raw = re.sub(r'```json|```', '', result).strip()
-
-    json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-
-    if json_match:
-        raw = json_match.group()
-
     try:
+        response = client.models.generate_content(
+            model=MODEL_FAST,
+            contents=[make_content("user", prompt)],
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(google_search=types.GoogleSearch())],
+                temperature=0.5,
+                max_output_tokens=500
+            )
+        )
+
+        raw = response.text.strip()
+
+        raw = re.sub(r'```json|```', '', raw).strip()
+
+        json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+
+        if json_match:
+            raw = json_match.group()
+
         data = json.loads(raw)
 
         refs = data.get("references", [])
@@ -450,18 +420,17 @@ def find_references(subject_name, query):
         if refs:
             return refs
 
-    except Exception:
-        pass
+        raise ValueError("No references")
 
-    return [{
-        "title": f"Academic resources for {query}",
-        "type": "website",
-        "author": "Google Scholar",
-        "year": "Online",
-        "summary": (
-            f"Search Google Scholar for peer-reviewed papers and academic resources "
-            f"about {query} in the context of {subject_name}."
-        ),
-        "url": f"https://scholar.google.com/scholar?q={query.replace(' ', '+')}+{subject_name.replace(' ', '+')}",
-        "tags": [query, subject_name, "academic"]
-    }]
+    except Exception as e:
+        print("REFERENCE ERROR:", e)
+
+        return [{
+            "title": f"Resources for {query}",
+            "type": "website",
+            "author": "Google Scholar",
+            "year": "Online",
+            "summary": f"Search academic references about {query}.",
+            "url": f"https://scholar.google.com/scholar?q={query.replace(' ', '+')}",
+            "tags": [query, subject_name]
+        }]
