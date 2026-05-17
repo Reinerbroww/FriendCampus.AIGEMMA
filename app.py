@@ -1,8 +1,9 @@
+import json
 import os
 import base64
 import re
 
-from flask import Flask, render_template, request, redirect, url_for, jsonify, session
+from flask import Flask, render_template, request, redirect, url_for, jsonify, session, Response, stream_with_context
 from database import (
     init_db, get_all_subjects, add_subject,
     get_subject_by_id, delete_subject,
@@ -18,7 +19,7 @@ from database import (
 from gemma import (
     chat_with_gemma, generate_roadmap,
     generate_understanding_check, evaluate_answer,
-    find_references, chat_with_image
+    find_references, chat_with_image, chat_with_gemma_stream, clean_markdown
 )
 
 app = Flask(__name__)
@@ -228,11 +229,12 @@ def chat(subject_id):
     subject = get_subject_by_id(subject_id)
     if not subject:
         return jsonify({"error": "Subject not found"}), 404
+
     user_message = request.json.get("message", "").strip()
     if not user_message:
         return jsonify({"error": "Empty message"}), 400
 
-    raw_history = get_conversations(subject_id) [-6:]
+    raw_history = get_conversations(subject_id)
     conversation_history = [
         {
             "role":  "user" if msg["role"] == "user" else "model",
@@ -242,12 +244,38 @@ def chat(subject_id):
     ]
 
     save_message(subject_id, "user", user_message)
-    try:
-        response = chat_with_gemma(subject["name"], conversation_history, user_message)
-        save_message(subject_id, "assistant", response)
-        return jsonify({"response": response})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+
+    def generate():
+        full_response = ""
+        try:
+            stream = chat_with_gemma_stream(
+                subject["name"],
+                conversation_history,
+                user_message
+            )
+            for chunk in stream:
+                if chunk.text:
+                    cleaned = clean_markdown(chunk.text)
+                    full_response += cleaned
+                    # Kirim chunk ke browser
+                    yield f"data: {json.dumps({'chunk': cleaned})}\n\n"
+
+            # Simpan ke database setelah selesai
+            save_message(subject_id, "assistant", full_response)
+            yield f"data: {json.dumps({'done': True})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control':               'no-cache',
+            'X-Accel-Buffering':           'no',
+            'Access-Control-Allow-Origin': '*'
+        }
+    )
 
 @app.route("/analyze-image/<int:subject_id>", methods=["POST"])
 @login_required

@@ -57,18 +57,16 @@ function formatMessage(text) {
 }
 
 async function sendMessage() {
-    const input = document.getElementById('userInput');
+    const input   = document.getElementById('userInput');
     const message = input.value.trim();
 
     if (!message && !selectedImage) return;
 
-    // Kalau ada gambar, pake sendImageMessage
     if (selectedImage) {
         await sendImageMessage(message || "Please analyze this image.");
         return;
     }
 
-    // Normal text message
     appendMessage('user', message);
     input.value = '';
     input.style.height = 'auto';
@@ -76,19 +74,67 @@ async function sendMessage() {
     document.getElementById('loading').style.display = 'flex';
     document.getElementById('sendBtn').disabled = true;
 
+    // Bikin bubble kosong buat streaming
+    const chatBox = document.getElementById('chatBox');
+    const empty   = chatBox.querySelector('.empty-chat');
+    if (empty) empty.remove();
+
+    const bubble = document.createElement('div');
+    bubble.className = 'message assistant';
+    bubble.innerHTML = '<div class="bubble" id="streamBubble"></div>';
+    chatBox.appendChild(bubble);
+
+    const streamEl = document.getElementById('streamBubble');
+    let fullText   = '';
+
     try {
-        const res = await fetch(`/chat/${SUBJECT_ID}`, {
-            method: 'POST',
+        const response = await fetch(`/chat/${SUBJECT_ID}`, {
+            method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message })
+            body:    JSON.stringify({ message })
         });
-        const data = await res.json();
-        appendMessage('assistant', data.response || 'Something went wrong.');
+
+        const reader  = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        document.getElementById('loading').style.display = 'none';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const text  = decoder.decode(value);
+            const lines = text.split('\n');
+
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+
+                try {
+                    const data = JSON.parse(line.slice(6));
+
+                    if (data.chunk) {
+                        fullText += data.chunk;
+                        streamEl.innerHTML = formatMessage(fullText);
+                        chatBox.scrollTop  = chatBox.scrollHeight;
+                    }
+
+                    if (data.done) break;
+
+                    if (data.error) {
+                        streamEl.textContent = 'Error: ' + data.error;
+                        break;
+                    }
+                } catch (e) {
+                    // Skip invalid JSON
+                }
+            }
+        }
+
     } catch (err) {
-        appendMessage('assistant', 'Connection error. Try again!');
+        if (streamEl) streamEl.textContent = 'Connection error. Try again!';
     } finally {
         document.getElementById('loading').style.display = 'none';
-        document.getElementById('sendBtn').disabled = false;
+        document.getElementById('sendBtn').disabled      = false;
     }
 }
 
@@ -298,19 +344,44 @@ async function loadRoadmap() {
     const list = document.getElementById('topicsList');
     if (!list) return;
 
+    // Tampilkan pesan yang lebih informatif
+    const messages = [
+        "Gemma is analyzing the subject...",
+        "Building your learning path...",
+        "Organizing topics by difficulty...",
+        "Almost ready..."
+    ];
+
+    let msgIndex = 0;
     list.innerHTML = `
         <div class="roadmap-loading">
             <div class="loading-dots"><span></span><span></span><span></span></div>
-            Gemma is building your roadmap...
+            <span id="roadmapLoadingMsg">${messages[0]}</span>
         </div>`;
+
+    // Rotate pesan tiap 3 detik biar keliatan progress
+    const msgTimer = setInterval(() => {
+        msgIndex = (msgIndex + 1) % messages.length;
+        const el = document.getElementById('roadmapLoadingMsg');
+        if (el) el.textContent = messages[msgIndex];
+    }, 3000);
 
     try {
         const res  = await fetch(`/roadmap/${SUBJECT_ID}`);
         const data = await res.json();
 
+        clearInterval(msgTimer);
+
         if (data.error) {
-            list.innerHTML = `<p style="color:var(--text-4);padding:2rem;text-align:center;">
-                Failed to load roadmap. Try regenerating.</p>`;
+            list.innerHTML = `
+                <div style="text-align:center;padding:2rem;">
+                    <p style="color:var(--text-4);margin-bottom:1rem;">
+                        Failed to load roadmap.
+                    </p>
+                    <button onclick="resetRoadmap()" class="reset-btn">
+                        🔄 Try Again
+                    </button>
+                </div>`;
             return;
         }
 
@@ -318,8 +389,16 @@ async function loadRoadmap() {
         roadmapLoaded = true;
 
     } catch (err) {
-        list.innerHTML = `<p style="color:var(--text-4);padding:2rem;text-align:center;">
-            Failed to load roadmap.</p>`;
+        clearInterval(msgTimer);
+        list.innerHTML = `
+            <div style="text-align:center;padding:2rem;">
+                <p style="color:var(--text-4);margin-bottom:1rem;">
+                    Connection timeout. Please try again.
+                </p>
+                <button onclick="loadRoadmap(); roadmapLoaded=false;" class="reset-btn">
+                    🔄 Retry
+                </button>
+            </div>`;
     }
 }
 
@@ -573,54 +652,95 @@ let savedRefs = [];
 async function searchReferences(useSubjectName = false) {
     const input = document.getElementById('refSearchInput');
     const query = useSubjectName
-        ? input.placeholder.replace("Search papers, books, articles about ", "").replace("...", "")
+        ? SUBJECT_NAME
         : input.value.trim();
 
     if (!query) return;
-
-    // Update input kalau pake subject name
     if (useSubjectName) input.value = query;
 
-    const btn = document.getElementById('refSearchBtn');
-    const loading = document.getElementById('refLoading');
-    const empty = document.getElementById('refEmpty');
-    const filters = document.getElementById('refFilters');
-    const subtabs = document.getElementById('refSubtabs');
+    const btn      = document.getElementById('refSearchBtn');
+    const loading  = document.getElementById('refLoading');
+    const empty    = document.getElementById('refEmpty');
+    const filters  = document.getElementById('refFilters');
+    const subtabs  = document.getElementById('refSubtabs');
 
-    btn.disabled = true;
-    btn.textContent = 'Searching...';
+    btn.disabled      = true;
+    btn.textContent   = 'Searching...';
     loading.style.display = 'flex';
-    empty.style.display = 'none';
+    empty.style.display   = 'none';
     document.getElementById('refResults').innerHTML = '';
 
+    // Update loading message
+    const refMessages = [
+        "Searching the web...",
+        "Finding academic papers...",
+        "Collecting references...",
+        "Almost done..."
+    ];
+    let refMsgIndex = 0;
+    const refMsgTimer = setInterval(() => {
+        refMsgIndex = (refMsgIndex + 1) % refMessages.length;
+        const loadingEl = loading.querySelector('span');
+        if (loadingEl) loadingEl.textContent = refMessages[refMsgIndex];
+    }, 4000);
+
     try {
-        const res = await fetch(`/references/${SUBJECT_ID}`, {
-            method: 'POST',
+        // Pake AbortController buat timeout 90 detik
+        const controller = new AbortController();
+        const timeout    = setTimeout(() => controller.abort(), 90000);
+
+        const res  = await fetch(`/references/${SUBJECT_ID}`, {
+            method:  'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query })
+            body:    JSON.stringify({ query }),
+            signal:  controller.signal
         });
+
+        clearTimeout(timeout);
+        clearInterval(refMsgTimer);
+
         const data = await res.json();
 
         if (data.error) {
-            document.getElementById('refResults').innerHTML =
-                `<p style="color:#cc4444;font-size:13px;padding:1rem;">Error: ${data.error}</p>`;
+            document.getElementById('refResults').innerHTML = `
+                <div class="ref-empty">
+                    <div class="ref-empty-title">Search Failed</div>
+                    <div class="ref-empty-sub">${data.error}</div>
+                </div>`;
             return;
         }
 
         allReferences = data.references || [];
         document.getElementById('resultsCount').textContent = allReferences.length;
 
-        filters.style.display = 'flex';
-        subtabs.style.display = 'flex';
+        filters.style.display  = 'flex';
+        subtabs.style.display  = 'flex';
 
         renderReferences(allReferences);
         loadSavedReferences();
 
     } catch (err) {
-        document.getElementById('refResults').innerHTML =
-            `<p style="color:#cc4444;font-size:13px;padding:1rem;">Failed to search. Try again.</p>`;
+        clearInterval(refMsgTimer);
+
+        const isTimeout = err.name === 'AbortError';
+        document.getElementById('refResults').innerHTML = `
+            <div class="ref-empty">
+                <div class="ref-empty-title">
+                    ${isTimeout ? 'Search Timed Out' : 'Search Failed'}
+                </div>
+                <div class="ref-empty-sub">
+                    ${isTimeout
+                        ? 'The search took too long. Try a more specific query.'
+                        : 'Connection error. Please try again.'
+                    }
+                </div>
+                <button onclick="searchReferences()" class="start-check-btn"
+                        style="margin-top:1rem;">
+                    🔄 Try Again
+                </button>
+            </div>`;
     } finally {
-        btn.disabled = false;
+        btn.disabled    = false;
         btn.textContent = 'Search';
         loading.style.display = 'none';
     }
