@@ -113,7 +113,7 @@ def generate_roadmap(subject_name):
     """Generate roadmap hierarki dengan sub-topik dalam format JSON"""
     prompt = (
         f'Create a detailed learning roadmap for the university course "{subject_name}".\n\n'
-        f'Generate exactly 8-10 main topics, each with exactly 3-4 subtopics.\n\n'
+        f'Generate exactly 6 main topics, each with exactly 3-4 subtopics.\n\n'
         f'Return ONLY valid JSON in this exact format, absolutely no other text:\n'
         f'{{\n'
         f'  "topics": [\n'
