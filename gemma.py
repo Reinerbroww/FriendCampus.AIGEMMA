@@ -113,7 +113,7 @@ def generate_roadmap(subject_name):
     """Generate roadmap hierarki dengan sub-topik dalam format JSON"""
     prompt = (
         f'Create a detailed learning roadmap for the university course "{subject_name}".\n\n'
-        f'Generate exactly 6 main topics, each with exactly 3-4 subtopics.\n\n'
+        f'Generate exactly 8-10 main topics, each with exactly 3-4 subtopics.\n\n'
         f'Return ONLY valid JSON in this exact format, absolutely no other text:\n'
         f'{{\n'
         f'  "topics": [\n'
@@ -332,8 +332,9 @@ def find_references(subject_name, query):
     """Cari referensi akademik menggunakan Gemma + web search"""
     prompt = (
         f'You are an academic research assistant for a student studying "{subject_name}".\n\n'
-        f'Find 4-5 high quality academic references about: "{query}"\n\n'
+        f'Find 6-7 high quality academic references about: "{query}"\n\n'
         f'Include: textbooks, academic papers, educational websites, online courses.\n\n'
+        f'paper must 2024, 2025, 2026, and the link can be access.\n\n'
         f'Return ONLY a valid JSON object, no other text before or after:\n'
         f'{{\n'
         f'  "references": [\n'
