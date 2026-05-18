@@ -670,20 +670,6 @@ async function searchReferences(useSubjectName = false) {
     empty.style.display   = 'none';
     document.getElementById('refResults').innerHTML = '';
 
-    // Update loading message
-    const refMessages = [
-        "Searching the web...",
-        "Finding academic papers...",
-        "Collecting references...",
-        "Almost done..."
-    ];
-    let refMsgIndex = 0;
-    const refMsgTimer = setInterval(() => {
-        refMsgIndex = (refMsgIndex + 1) % refMessages.length;
-        const loadingEl = loading.querySelector('span');
-        if (loadingEl) loadingEl.textContent = refMessages[refMsgIndex];
-    }, 4000);
-
     try {
         // Pake AbortController buat timeout 90 detik
         const controller = new AbortController();
@@ -697,7 +683,6 @@ async function searchReferences(useSubjectName = false) {
         });
 
         clearTimeout(timeout);
-        clearInterval(refMsgTimer);
 
         const data = await res.json();
 
@@ -720,7 +705,6 @@ async function searchReferences(useSubjectName = false) {
         loadSavedReferences();
 
     } catch (err) {
-        clearInterval(refMsgTimer);
 
         const isTimeout = err.name === 'AbortError';
         document.getElementById('refResults').innerHTML = `
