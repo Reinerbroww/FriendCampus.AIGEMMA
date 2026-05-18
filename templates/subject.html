@@ -293,7 +293,11 @@
         </main>
     </div>
 
-    <script>const SUBJECT_ID = {{ subject['id'] }};</script>
+    <script>
+    const SUBJECT_ID = {{ subject['id'] }};
+    const SUBJECT_NAME = "{{ subject['name'] }}";
+    </script>
+
     <script src="{{ url_for('static', filename='script.js') }}"></script>
     </body>
     </html>
